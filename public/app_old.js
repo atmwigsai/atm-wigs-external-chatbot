@@ -1,8 +1,9 @@
 // ===== CONFIG =====
+//const API_BASE_URL = window.location.origin; // Tự động lấy URL hiện tại
+// Tự động phát hiện môi trường
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://127.0.0.1:5000'
-    : window.location.origin;
-
+    ? 'http://127.0.0.1:5000'  // Local development
+    : window.location.origin;  // Production (Vercel)
 // ===== STATE =====
 let currentSessionId = null;
 let uploadedImageUrl = null;
@@ -24,9 +25,9 @@ const removeImageBtn = document.getElementById('removeImageBtn');
 
 // ===== INITIALIZATION =====
 document.addEventListener('DOMContentLoaded', () => {
-    loadSessions();       // Chỉ load danh sách sessions có sẵn
+    loadSessions();
     setupEventListeners();
-    // Không tự tạo session mới khi load trang
+    createNewSession(); // Tạo session mặc định
 });
 
 // ===== EVENT LISTENERS =====
@@ -36,7 +37,7 @@ function setupEventListeners() {
         sidebar.classList.toggle('collapsed');
     });
 
-    // New chat - chỉ tạo khi bấm nút
+    // New chat
     newChatBtn.addEventListener('click', createNewSession);
 
     // Send message
@@ -68,16 +69,10 @@ async function loadSessions() {
     try {
         const response = await fetch(`${API_BASE_URL}/api/sessions`);
         const data = await response.json();
-
+        
         if (data.success) {
             sessions = data.sessions;
             renderSessions();
-
-            // Nếu có session cũ, tự động load session mới nhất
-            if (sessions.length > 0) {
-                loadSession(sessions[0].id);
-            }
-            // Nếu không có session nào thì chỉ hiện welcome screen, không tạo mới
         }
     } catch (error) {
         console.error('Error loading sessions:', error);
@@ -91,9 +86,9 @@ async function createNewSession() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title: 'New Chat' })
         });
-
+        
         const data = await response.json();
-
+        
         if (data.success) {
             currentSessionId = data.session.id;
             sessions.unshift(data.session);
@@ -110,16 +105,17 @@ async function createNewSession() {
 async function loadSession(sessionId) {
     try {
         currentSessionId = sessionId;
-
+        
         const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/messages`);
         const data = await response.json();
-
+        
         if (data.success) {
             clearMessages();
             data.messages.forEach(msg => {
                 addMessage(msg.role, msg.content, msg.image_url, false);
             });
-
+            
+            // Update active state
             renderSessions();
         }
     } catch (error) {
@@ -129,7 +125,7 @@ async function loadSession(sessionId) {
 
 async function renameSession(sessionId, currentTitle) {
     const newTitle = prompt('Rename session:', currentTitle);
-
+    
     if (newTitle && newTitle !== currentTitle) {
         try {
             const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`, {
@@ -137,9 +133,9 @@ async function renameSession(sessionId, currentTitle) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ title: newTitle })
             });
-
+            
             const data = await response.json();
-
+            
             if (data.success) {
                 const session = sessions.find(s => s.id === sessionId);
                 if (session) {
@@ -155,11 +151,11 @@ async function renameSession(sessionId, currentTitle) {
 
 function renderSessions() {
     chatHistory.innerHTML = '';
-
+    
     sessions.forEach(session => {
         const div = document.createElement('div');
         div.className = `chat-item ${session.id === currentSessionId ? 'active' : ''}`;
-
+        
         div.innerHTML = `
             <i class="fas fa-comment chat-item-icon"></i>
             <span class="chat-item-title">${escapeHtml(session.title)}</span>
@@ -169,18 +165,18 @@ function renderSessions() {
                 </button>
             </div>
         `;
-
+        
         div.addEventListener('click', (e) => {
             if (!e.target.closest('.chat-item-action')) {
                 loadSession(session.id);
             }
         });
-
+        
         div.querySelector('.rename-btn').addEventListener('click', (e) => {
             e.stopPropagation();
             renameSession(session.id, session.title);
         });
-
+        
         chatHistory.appendChild(div);
     });
 }
@@ -188,30 +184,29 @@ function renderSessions() {
 // ===== MESSAGE HANDLING =====
 async function sendMessage() {
     const message = messageInput.value.trim();
-
+    
     if (!message && !uploadedImageUrl) return;
-
-    // Nếu chưa có session, tự động tạo mới khi gửi tin nhắn đầu tiên
     if (!currentSessionId) {
         await createNewSession();
     }
-
+    
     // Disable input
     messageInput.disabled = true;
     sendBtn.disabled = true;
-
+    
     // Add user message to UI
     addMessage('user', message, uploadedImageUrl);
-
+    
     // Clear input
     messageInput.value = '';
     messageInput.style.height = 'auto';
     removeImage();
-
+    
     // Show typing indicator
     const typingId = showTypingIndicator();
-
+    
     try {
+        // Send to backend
         const response = await fetch(`${API_BASE_URL}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -221,36 +216,40 @@ async function sendMessage() {
                 imageUrl: uploadedImageUrl
             })
         });
-
+        
         const data = await response.json();
-
+        
+        // Remove typing indicator
         removeTypingIndicator(typingId);
-
+        
         if (data.success) {
+            // Add bot response
             addMessage('assistant', data.reply);
-
-            // Đổi tên session theo tin nhắn đầu tiên
+            
+            // Update session title if it's the first message
             const session = sessions.find(s => s.id === currentSessionId);
             if (session && session.title === 'New Chat') {
                 const firstWords = message.split(' ').slice(0, 5).join(' ');
                 session.title = firstWords || 'New Chat';
-
+                
+                // Update on server
                 await fetch(`${API_BASE_URL}/api/sessions/${currentSessionId}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ title: session.title })
                 });
-
+                
                 renderSessions();
             }
         } else {
-            addMessage('assistant', 'Sorry, there was an error. Please try again.');
+            addMessage('assistant', 'Sorry, there was an error.Please try again.');
         }
     } catch (error) {
         console.error('Error sending message:', error);
         removeTypingIndicator(typingId);
         addMessage('assistant', 'Cannot connect to server. Please check your connection.');
     } finally {
+        // Re-enable input
         messageInput.disabled = false;
         sendBtn.disabled = false;
         messageInput.focus();
@@ -260,14 +259,14 @@ async function sendMessage() {
 function addMessage(role, content, imageUrl = null, scroll = true) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
-
+    
     const avatar = document.createElement('div');
     avatar.className = 'message-avatar';
     avatar.innerHTML = role === 'user' ? '<i class="fas fa-user"></i>' : '<i class="fas fa-robot"></i>';
-
+    
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
-
+    
     if (imageUrl) {
         const img = document.createElement('img');
         img.src = imageUrl;
@@ -275,22 +274,27 @@ function addMessage(role, content, imageUrl = null, scroll = true) {
         img.alt = 'Uploaded image';
         contentDiv.appendChild(img);
     }
-
+    
     if (content) {
         const text = document.createElement('div');
-        text.innerHTML = content.replace(/\n/g, '<br>');
+        text.innerHTML = content.replace(/\n/g, '<br>'); // ← SỬA DÒNG NÀY
         contentDiv.appendChild(text);
     }
-
+    
     messageDiv.appendChild(avatar);
     messageDiv.appendChild(contentDiv);
-
+    
+    // Remove welcome message if exists
     const welcomeMsg = messagesContainer.querySelector('.welcome-message');
-    if (welcomeMsg) welcomeMsg.remove();
-
+    if (welcomeMsg) {
+        welcomeMsg.remove();
+    }
+    
     messagesContainer.appendChild(messageDiv);
-
-    if (scroll) scrollToBottom();
+    
+    if (scroll) {
+        scrollToBottom();
+    }
 }
 
 function showTypingIndicator() {
@@ -310,22 +314,24 @@ function showTypingIndicator() {
             </div>
         </div>
     `;
-
+    
     messagesContainer.appendChild(typingDiv);
     scrollToBottom();
-
+    
     return id;
 }
 
 function removeTypingIndicator(id) {
     const element = document.getElementById(id);
-    if (element) element.remove();
+    if (element) {
+        element.remove();
+    }
 }
 
 function clearMessages() {
     messagesContainer.innerHTML = `
         <div class="welcome-message">
-            <h2>Hello!</h2>
+            <h2>Hello! </h2>
             <p>I am ATM WIGS Assistant. How can I help you today?</p>
         </div>
     `;
@@ -338,12 +344,14 @@ function scrollToBottom() {
 // ===== IMAGE HANDLING =====
 async function handleFileUpload(e) {
     const file = e.target.files[0];
-    if (file) await uploadImage(file);
+    if (file) {
+        await uploadImage(file);
+    }
 }
 
 async function handlePaste(e) {
     const items = e.clipboardData.items;
-
+    
     for (let item of items) {
         if (item.type.indexOf('image') !== -1) {
             e.preventDefault();
@@ -355,27 +363,29 @@ async function handlePaste(e) {
 }
 
 async function uploadImage(file) {
+    // Validate file type
     if (!file.type.startsWith('image/')) {
         alert('Please select an image file!');
         return;
     }
-
+    
+    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
         alert('Image size must not exceed 5MB!');
         return;
     }
-
+    
     try {
         const formData = new FormData();
         formData.append('file', file);
-
+        
         const response = await fetch(`${API_BASE_URL}/api/upload`, {
             method: 'POST',
             body: formData
         });
-
+        
         const data = await response.json();
-
+        
         if (data.success) {
             uploadedImageUrl = data.url;
             previewImg.src = data.url;
@@ -387,7 +397,8 @@ async function uploadImage(file) {
         console.error('Error uploading image:', error);
         alert('Error uploading image!');
     }
-
+    
+    // Reset file input
     fileInput.value = '';
 }
 
