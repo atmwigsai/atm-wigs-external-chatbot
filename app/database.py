@@ -2,7 +2,10 @@ import os
 from supabase import create_client, Client
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# Backend uses the Supabase SERVICE_ROLE key: it bypasses RLS so the app keeps working with
+# RLS enabled. This key must stay server-side ONLY — never expose it to the browser/frontend.
+# Falls back to the legacy SUPABASE_KEY (anon) during the transition if the new var isn't set.
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
 N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL")
 
 # Khởi tạo Supabase
