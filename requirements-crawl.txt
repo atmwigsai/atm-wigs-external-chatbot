@@ -1,0 +1,5 @@
+# Crawler-only dependencies (Phase 3). Kept out of the main requirements.txt so the Vercel
+# serverless bundle stays lean — the crawler runs manually, not in the request path.
+# Install with:  pip install -r requirements-crawl.txt
+trafilatura>=1.8
+numpy>=1.26

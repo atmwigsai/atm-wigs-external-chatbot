@@ -22,3 +22,17 @@ def embed_query(text: str) -> list[float]:
     text = (text or "").replace("\n", " ").strip()
     resp = client.embeddings.create(model=EMBEDDING_MODEL, input=text)
     return resp.data[0].embedding
+
+
+def embed_texts(texts: list[str], batch_size: int = 100) -> list[list[float]]:
+    """Embed many texts (batched). Used by the website crawler (app/crawl)."""
+    client = get_openai()
+    if client is None:
+        raise RuntimeError("OpenAI client not configured — set OPENAI_API_KEY")
+    cleaned = [(t or "").replace("\n", " ").strip() for t in texts]
+    vectors: list[list[float]] = []
+    for i in range(0, len(cleaned), batch_size):
+        batch = cleaned[i:i + batch_size]
+        resp = client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
+        vectors.extend(d.embedding for d in resp.data)
+    return vectors

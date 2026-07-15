@@ -36,7 +36,28 @@ VECTOR_SEARCH_TOOL = {
     },
 }
 
-TOOLS = [VECTOR_SEARCH_TOOL]
+# Website-only search: same retriever, hard-filtered to doc_type='website' (content crawled
+# from atmwigs.com). Domain restriction is structural — it cannot return non-atmwigs results.
+WEB_SEARCH_TOOL = {
+    "type": "function",
+    "name": "web_search_atmwigs",
+    "description": (
+        "Search content crawled from the public atmwigs.com website ONLY (company/about info, "
+        "partnership & membership programs, sustainability, product pages, published policies). "
+        "Use for questions about the company itself or public website information. Never returns "
+        "results from outside atmwigs.com."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Natural-language search query."},
+            "top_k": {"type": "integer", "description": "How many chunks to return (default 5)."},
+        },
+        "required": ["query"],
+    },
+}
+
+TOOLS = [VECTOR_SEARCH_TOOL, WEB_SEARCH_TOOL]
 
 
 def dispatch_tool(name: str, args: dict):
@@ -45,6 +66,12 @@ def dispatch_tool(name: str, args: dict):
         return search_documents(
             query=args["query"],
             doc_type=args.get("doc_type"),
+            top_k=int(args.get("top_k", 5) or 5),
+        )
+    if name == "web_search_atmwigs":
+        return search_documents(
+            query=args["query"],
+            doc_type="website",
             top_k=int(args.get("top_k", 5) or 5),
         )
     raise ValueError(f"unknown tool: {name}")
