@@ -34,6 +34,10 @@ def main():
                     help="Skip product pages (crawl only company/policy pages).")
     ap.add_argument("--care", action="store_true",
                     help="Also crawl the thin care/education hub pages (off by default).")
+    ap.add_argument("--posts", type=int, default=0,
+                    help="How many blog posts to crawl (default 0 = none).")
+    ap.add_argument("--only-posts", action="store_true",
+                    help="Crawl ONLY blog posts (skip static + product pages). Use with --posts.")
     ap.add_argument("--delay", type=float, default=1.0,
                     help="Politeness delay between requests, seconds (default 1.0).")
     ap.add_argument("--dedup-threshold", type=float, default=0.95,
@@ -49,8 +53,10 @@ def main():
         write=args.write,
         delay=args.delay,
         dedup_threshold=args.dedup_threshold,
-        include_products=not args.no_products,
+        include_products=(not args.no_products) and (not args.only_posts),
         include_care=args.care,
+        include_static=not args.only_posts,
+        post_limit=args.posts,
     )
 
 

@@ -16,7 +16,7 @@ import numpy as np
 
 from app.database import get_supabase
 from app.rag.embed import embed_texts, EMBEDDING_DIM
-from app.crawl.urls import static_urls, product_urls
+from app.crawl.urls import static_urls, product_urls, post_urls
 from app.crawl.extract import fetch_html, extract_main
 from app.crawl.chunk import chunk_text
 
@@ -68,10 +68,13 @@ def _vec_literal(vec):
     return "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
 
 
-def select_urls(product_limit, include_products=True, include_care=False):
-    urls = list(static_urls(include_care=include_care))
+def select_urls(product_limit, include_products=True, include_care=False,
+                include_static=True, post_limit=0):
+    urls = list(static_urls(include_care=include_care)) if include_static else []
     if include_products:
         urls += product_urls(limit=product_limit)
+    if post_limit:
+        urls += post_urls(limit=post_limit)
     # de-dup preserving order
     seen, out = set(), []
     for u in urls:
@@ -83,13 +86,14 @@ def select_urls(product_limit, include_products=True, include_care=False):
 
 def run_crawl(product_limit=25, write=False, delay=1.0,
               dedup_threshold=DEFAULT_DEDUP_THRESHOLD, include_products=True,
-              include_care=False, verbose=True):
+              include_care=False, include_static=True, post_limit=0, verbose=True):
     """Crawl selected pages; report what would be inserted (dry-run) or insert (write=True)."""
     supabase = get_supabase()
     if supabase is None:
         raise RuntimeError("Supabase not configured")
 
-    urls = select_urls(product_limit, include_products=include_products, include_care=include_care)
+    urls = select_urls(product_limit, include_products=include_products, include_care=include_care,
+                       include_static=include_static, post_limit=post_limit)
     internal_norm = _load_internal_matrix(supabase)
     if verbose:
         mode = "WRITE" if write else "DRY-RUN"

@@ -26,6 +26,7 @@ CARE_SLUGS = [
 ]
 
 PRODUCT_SITEMAPS = [f"{BASE}/product-sitemap1.xml", f"{BASE}/product-sitemap2.xml"]
+POST_SITEMAPS = [f"{BASE}/post-sitemap{i}.xml" for i in range(1, 5)]
 
 # robots.txt Disallow (path prefixes / substrings). We only fetch English public pages anyway,
 # but this guards every URL before it is crawled.
@@ -71,10 +72,9 @@ def _sitemap_locs(url: str, timeout: float = 20.0) -> list[str]:
     return re.findall(r"<loc>([^<]+)</loc>", r.text)
 
 
-def product_urls(limit: int | None = None, timeout: float = 20.0) -> list[str]:
-    """Product URLs from the product sitemaps (English canonical, robots-allowed)."""
+def _sitemap_batch_urls(sitemaps, limit, timeout):
     seen, out = set(), []
-    for sm in PRODUCT_SITEMAPS:
+    for sm in sitemaps:
         for loc in _sitemap_locs(sm, timeout=timeout):
             loc = loc.strip()
             if loc in seen or not is_allowed(loc):
@@ -84,3 +84,13 @@ def product_urls(limit: int | None = None, timeout: float = 20.0) -> list[str]:
             if limit and len(out) >= limit:
                 return out
     return out
+
+
+def product_urls(limit: int | None = None, timeout: float = 20.0) -> list[str]:
+    """Product URLs from the product sitemaps (English canonical, robots-allowed)."""
+    return _sitemap_batch_urls(PRODUCT_SITEMAPS, limit, timeout)
+
+
+def post_urls(limit: int | None = None, timeout: float = 20.0) -> list[str]:
+    """Blog post URLs from the post sitemaps (English canonical, robots-allowed)."""
+    return _sitemap_batch_urls(POST_SITEMAPS, limit, timeout)
