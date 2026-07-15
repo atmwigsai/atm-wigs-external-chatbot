@@ -1,7 +1,12 @@
 // ===== CONFIG =====
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://127.0.0.1:5000'
-    : window.location.origin;
+// API base URL comes from config.js (window.APP_CONFIG.API_BASE_URL) so the backend domain can
+// be changed at deploy time without editing this file. Falls back to localhost in dev, or
+// same-origin if neither is set.
+const API_BASE_URL =
+    (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL) ||
+    ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://127.0.0.1:5000'
+        : window.location.origin);
 
 // ===== STATE =====
 let currentSessionId = null;
