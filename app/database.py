@@ -19,6 +19,12 @@ MAX_HISTORY = int(os.getenv("AGENT_HISTORY_TURNS", "8"))       # prior messages 
 OPENAI_TIMEOUT = float(os.getenv("OPENAI_TIMEOUT", "60"))      # per-call timeout (SDK default is 600s!)
 # Reasoning effort for gpt-5.6-terra (low|medium|high). medium ~ trims latency vs default.
 AGENT_REASONING_EFFORT = os.getenv("AGENT_REASONING_EFFORT", "medium").strip().lower()
+# Post-answer grounding check: if the answer isn't supported by retrieved snippets, replace it
+# with the no-info reply (anti-confabulation). DEFAULT OFF — the LLM judge (luna or terra) proved
+# unreliable, false-refusing legitimate synthesized answers (refund/company/MOQ) ~50% of the time.
+# Kept behind the flag for future experimentation. Judge model configurable.
+GROUNDING_CHECK = os.getenv("GROUNDING_CHECK", "false").strip().lower() in ("1", "true", "yes", "on")
+AGENT_JUDGE_MODEL = os.getenv("AGENT_JUDGE_MODEL", AGENT_SIDE_MODEL)
 
 # Khởi tạo Supabase
 supabase: Client = None
