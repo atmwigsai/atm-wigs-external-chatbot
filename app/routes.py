@@ -2,7 +2,7 @@ from flask import request, jsonify
 import requests
 from datetime import datetime
 import uuid
-from app.database import get_supabase, get_n8n_url
+from app.database import get_supabase, get_n8n_url, USE_AGENT, MAX_HISTORY
 
 def register_routes(app):
     
@@ -82,13 +82,10 @@ def register_routes(app):
         
         supabase = get_supabase()
         n8n_url = get_n8n_url()
-        
+
         if not supabase:
             return jsonify({'success': False, 'error': 'Database not configured'}), 500
-        
-        if not n8n_url:
-            return jsonify({'success': False, 'error': 'N8N webhook not configured'}), 500
-            
+
         try:
             data = request.json
             session_id = data.get('sessionId')
@@ -103,17 +100,36 @@ def register_routes(app):
                 'image_url': image_url
             }
             supabase.table('messages').insert(user_message).execute()
-            
-            # 2. Call n8n
-            n8n_payload = {
-                'sessionId': session_id,
-                'message': message,
-                'imageUrl': image_url
-            }
-            
-            n8n_response = requests.post(n8n_url, json=n8n_payload, timeout=30)
-            bot_reply = n8n_response.json().get('reply', 'Xin lỗi, tôi không thể trả lời.')
-            
+
+            # 2. Generate the reply.
+            #    USE_AGENT=false (default) -> keep the existing n8n path (production unchanged).
+            #    USE_AGENT=true            -> in-codebase agentic RAG (OpenAI gpt-5.6-terra).
+            if USE_AGENT:
+                from app.agent import run_agent
+                # Last few prior turns for context (drop the user msg we just inserted).
+                history_rows = (
+                    supabase.table('messages')
+                    .select('role,content')
+                    .eq('session_id', session_id)
+                    .order('created_at', desc=True)
+                    .limit(MAX_HISTORY + 1)
+                    .execute()
+                    .data
+                    or []
+                )
+                history = list(reversed(history_rows))[:-1]
+                bot_reply = run_agent(message, history=history, image_url=image_url)
+            else:
+                if not n8n_url:
+                    return jsonify({'success': False, 'error': 'N8N webhook not configured'}), 500
+                n8n_payload = {
+                    'sessionId': session_id,
+                    'message': message,
+                    'imageUrl': image_url,
+                }
+                n8n_response = requests.post(n8n_url, json=n8n_payload, timeout=30)
+                bot_reply = n8n_response.json().get('reply', 'Xin lỗi, tôi không thể trả lời.')
+
             # 3. Save bot message
             bot_message = {
                 'session_id': session_id,
