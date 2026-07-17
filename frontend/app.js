@@ -158,6 +158,27 @@ async function renameSession(sessionId, currentTitle) {
     }
 }
 
+async function deleteSession(sessionId, title) {
+    if (!confirm(`Xoá cuộc trò chuyện "${title}"?\nHành động này không thể hoàn tác.`)) return;
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (data.success) {
+            sessions = sessions.filter(s => s.id !== sessionId);
+            if (currentSessionId === sessionId) {
+                currentSessionId = null;
+                clearMessages();
+            }
+            renderSessions();
+        } else {
+            alert('Không xoá được cuộc trò chuyện. Vui lòng thử lại.');
+        }
+    } catch (error) {
+        console.error('Error deleting session:', error);
+        alert('Lỗi kết nối khi xoá cuộc trò chuyện.');
+    }
+}
+
 function renderSessions() {
     chatHistory.innerHTML = '';
 
@@ -172,6 +193,9 @@ function renderSessions() {
                 <button class="chat-item-action rename-btn" title="Rename">
                     <i class="fas fa-edit"></i>
                 </button>
+                <button class="chat-item-action delete-btn" title="Delete">
+                    <i class="fas fa-trash"></i>
+                </button>
             </div>
         `;
 
@@ -184,6 +208,11 @@ function renderSessions() {
         div.querySelector('.rename-btn').addEventListener('click', (e) => {
             e.stopPropagation();
             renameSession(session.id, session.title);
+        });
+
+        div.querySelector('.delete-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteSession(session.id, session.title);
         });
 
         chatHistory.appendChild(div);

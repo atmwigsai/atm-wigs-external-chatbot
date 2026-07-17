@@ -58,16 +58,23 @@ def register_routes(app):
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
     
-    @app.route('/api/sessions/<session_id>', methods=['PATCH', 'OPTIONS'])
-    def rename_session(session_id):
+    @app.route('/api/sessions/<session_id>', methods=['PATCH', 'DELETE', 'OPTIONS'])
+    def modify_session(session_id):
         if request.method == 'OPTIONS':
             return '', 204
-        
+
         supabase = get_supabase()
         if not supabase:
             return jsonify({'success': False, 'error': 'Database not configured'}), 500
-            
+
         try:
+            if request.method == 'DELETE':
+                # Delete the session's messages first (FK), then the session itself.
+                supabase.table('messages').delete().eq('session_id', session_id).execute()
+                supabase.table('chat_sessions').delete().eq('id', session_id).execute()
+                return jsonify({'success': True})
+
+            # PATCH: rename
             data = request.json
             new_title = data.get('title')
             result = supabase.table('chat_sessions').update({'title': new_title}).eq('id', session_id).execute()
