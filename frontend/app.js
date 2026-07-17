@@ -262,6 +262,59 @@ async function sendMessage() {
     }
 }
 
+// Lightweight, dependency-free markdown -> HTML for agent (bot) answers.
+// Escape-first => XSS-safe by construction; supports bold/italic/code/headings/lists/tables/links.
+function renderBotHtml(md) {
+    md = String(md == null ? '' : md).replace(/\r/g, '');
+    const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const inline = (s) => {
+        s = esc(s);
+        s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+        s = s.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+        s = s.replace(/__([^_]+?)__/g, '<strong>$1</strong>');
+        s = s.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<em>$2</em>');
+        // links: only http/https/mailto (javascript: etc. won't match -> stays escaped text)
+        s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
+                      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+        return s;
+    };
+    const isSep = (l) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(l);
+    const cells = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+    const lines = md.split('\n');
+    let html = '', i = 0, ul = false;
+    const closeUl = () => { if (ul) { html += '</ul>'; ul = false; } };
+    while (i < lines.length) {
+        const line = lines[i];
+        if (/\|/.test(line) && i + 1 < lines.length && isSep(lines[i + 1])) {   // table
+            closeUl();
+            html += '<table><thead><tr>' + cells(line).map((h) => `<th>${inline(h)}</th>`).join('') + '</tr></thead><tbody>';
+            i += 2;
+            while (i < lines.length && /\|/.test(lines[i]) && lines[i].trim() !== '') {
+                html += '<tr>' + cells(lines[i]).map((c) => `<td>${inline(c)}</td>`).join('') + '</tr>';
+                i++;
+            }
+            html += '</tbody></table>';
+            continue;
+        }
+        let m;
+        if ((m = line.match(/^\s*(#{1,3})\s+(.*)$/))) {          // heading
+            closeUl(); const lvl = m[1].length;
+            html += `<h${lvl}>${inline(m[2])}</h${lvl}>`;
+        } else if ((m = line.match(/^\s*[-*]\s+(.*)$/))) {        // bullet
+            if (!ul) { html += '<ul>'; ul = true; }
+            html += `<li>${inline(m[1])}</li>`;
+        } else if (line.trim() === '') {                         // blank line
+            closeUl();
+        } else {                                                 // paragraph
+            closeUl(); html += `<p>${inline(line)}</p>`;
+        }
+        i++;
+    }
+    closeUl();
+    return html;
+}
+
 function addMessage(role, content, imageUrl = null, scroll = true) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
@@ -283,7 +336,13 @@ function addMessage(role, content, imageUrl = null, scroll = true) {
 
     if (content) {
         const text = document.createElement('div');
-        text.innerHTML = content.replace(/\n/g, '<br>');
+        text.className = 'message-text';
+        if (role === 'assistant') {
+            text.innerHTML = renderBotHtml(content);   // agent markdown (sanitized)
+        } else {
+            text.textContent = content;                // user input: plain text, no HTML injection
+            text.style.whiteSpace = 'pre-wrap';
+        }
         contentDiv.appendChild(text);
     }
 
